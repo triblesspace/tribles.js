@@ -2,11 +2,12 @@
   "name": "tribles",
   "version": "0.1.2",
   "description": "This is the javascript/browser implementation of the _tribles_ ecosystem.",
-  "main": "mod.js",
   "repository": "git@github.com:triblesspace/tribles.js.git",
   "author": "⚫ <jp@bultmann.eu>",
   "license": "HPL",
   "type": "module",
+  "main": "./mod.js",
+  "module": "./mod.js",
   "dependencies": {
     "aws-sdk": "^2.820.0",
     "uuid": "^8.3.2"
