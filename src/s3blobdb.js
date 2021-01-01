@@ -1,4 +1,4 @@
-import AWS from "aws-sdk";
+import AWS from 'https://cdn.skypack.dev/aws-sdk';
 
 import { emptyValuePART } from "./part.js";
 

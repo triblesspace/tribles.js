@@ -1,4 +1,4 @@
-import * as uuid from 'uuid';
+import * as uuid from 'https://cdn.skypack.dev/uuid';
 
 function uuidEncoder(v, b) {
   if (!uuid.validate(v)) {

@@ -1,4 +1,4 @@
-import * as uuid from "uuid";
+import * as uuid from 'https://cdn.skypack.dev/uuid';
 
 import { emptyValuePART } from "./part.js";
 import {
