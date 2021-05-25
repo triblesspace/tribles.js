@@ -237,16 +237,16 @@ const lookup = (ns, kb, eId, attributeName) => {
     return {
       found: true,
       result: isLink
-        ? entityProxy(ns, kb, v)
-        : decoder(v.slice(0), async () => await kb.blobdb.get(v)),
+        ? entityProxy(ns, kb, v.slice())
+        : decoder(v.slice(), async () => await kb.blobdb.get(v)),
     };
   } else {
     const results = [];
     for (const [_e, _a, v] of res) {
       results.push(
         isLink
-          ? entityProxy(ns, kb, v)
-          : decoder(v.slice(0), async () => await kb.blobdb.get(v))
+          ? entityProxy(ns, kb, v.slice())
+          : decoder(v.slice(), async () => await kb.blobdb.get(v))
       );
     }
     return {
