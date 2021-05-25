@@ -59,9 +59,13 @@ const constantConstraint = (variable, constant) => {
 };
 
 class OrderByMinCostAndBlockage {
-  constructor(blockedBy) {
+  constructor(projected, blockedBy = []) {
     this.blockedBy = blockedBy;
+    this.projected = projected;
+    this.projectCount = projected.size;
+    this.omitCount = 0;
     this.exploredVariables = new Set();
+    this.isProjection = false;
   }
 
   propose(constraints) {
@@ -73,6 +77,7 @@ class OrderByMinCostAndBlockage {
         const variable = proposal.variable;
         if (
           minCosts <= candidateCosts &&
+          (this.projectCount === 0 || this.projected.has(variable)) &&
           this.blockedBy.every(
             ([blocked, blocker]) =>
               variable !== blocked || this.exploredVariables.has(blocker)
@@ -86,44 +91,37 @@ class OrderByMinCostAndBlockage {
     return candidateVariable;
   }
 
+  shortcircuit() {
+    return !this.isProjection;
+  }
+
   push(variable) {
     this.exploredVariables.add(variable);
+    if ((this.isProjection = this.projected.has(variable))) {
+      this.projectCount--;
+    } else {
+      this.omitCount++;
+    }
   }
 
   pop(variable) {
     this.exploredVariables.delete(variable);
-  }
-}
-
-class OrderByMinCost {
-  constructor() {}
-
-  propose(constraints) {
-    let candidateVariable = null;
-    let candidateCosts = Number.MAX_VALUE;
-    for (const c of constraints) {
-      for (const proposal of c.propose()) {
-        const minCosts = Math.min(...proposal.costs);
-        const variable = proposal.variable;
-        if (minCosts <= candidateCosts) {
-          candidateVariable = variable;
-          candidateCosts = minCosts;
-        }
-      }
+    if (this.projected.has(variable)) {
+      this.projectCount++;
+    } else {
+      this.omitCount--;
     }
-    return candidateVariable;
+    this.isProjection = this.omitCount === 0;
   }
-
-  push(variable) {}
-
-  pop(variable) {}
 }
 
 function* resolve(constraints, ordering, ascendingVariables, bindings) {
   //init
+  let hasResult = false;
   const variable = ordering.propose(constraints);
   if (variable === null) {
     yield bindings;
+    hasResult = true;
   } else {
     const ascending = ascendingVariables.has(variable);
 
@@ -141,8 +139,19 @@ function* resolve(constraints, ordering, ascendingVariables, bindings) {
       if (!cursors[i].peek(candidate)) break;
       i = (i + 1) % cursors.length;
       if (i === candidateOrigin) {
-        yield* resolve(constraints, ordering, ascendingVariables, bindings);
-        if (!nextKey(candidate, ascending)) break;
+        const newHasResult = yield* resolve(
+          constraints,
+          ordering,
+          ascendingVariables,
+          bindings
+        );
+        hasResult ||= newHasResult;
+        if (
+          (hasResult && ordering.shortcircuit()) ||
+          !nextKey(candidate, ascending)
+        ) {
+          break;
+        }
         cursors[i].seek(candidate);
       } else {
         const match = cursors[i].seek(candidate);
@@ -155,14 +164,13 @@ function* resolve(constraints, ordering, ascendingVariables, bindings) {
     constraints.forEach((c) => c.pop(variable));
     ordering.pop(variable);
   }
-  return;
+  return hasResult;
 }
 
 module.exports = {
   collectionConstraint,
   constantConstraint,
   indexConstraint,
-  OrderByMinCost,
   OrderByMinCostAndBlockage,
   resolve,
 };

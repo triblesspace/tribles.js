@@ -1,12 +1,6 @@
 const { isTransactionMarker, isValidTransaction } = require("./trible.js");
-const { EAV } = require("./query.js");
-const { find, TribleKB } = require("./triblekb.js");
-const {
-  blake2s32,
-  blake2sFinal,
-  blake2sInit,
-  blake2sUpdate,
-} = require("./blake2s.js");
+const { find } = require("./kb.js");
+const { blake2s32 } = require("./blake2s.js");
 const { contiguousTribles, TRIBLE_SIZE, VALUE_SIZE } = require("./trible.js");
 
 const TRIBLES_PROTOCOL = "tribles";
@@ -110,8 +104,8 @@ class WSConnector {
       return;
     }
 
-    this.inbox.kb = this.inbox.kb.withTribles(
-      contiguousTribles(txnTriblePayload)
+    this.inbox.commit((kb) =>
+      kb.withTribles(contiguousTribles(txnTriblePayload))
     );
   }
 
@@ -122,7 +116,7 @@ class WSConnector {
   }
 }
 
-class TribleBox {
+class Box {
   constructor(kb) {
     this._kb = kb;
 
@@ -142,11 +136,15 @@ class TribleBox {
     });
   }
 
-  get kb() {
+  commit(fn) {
+    this.set(fn(this.get()));
+  }
+
+  get() {
     return this._kb;
   }
 
-  set kb(newKB) {
+  set(newKB) {
     const difKB = newKB.subtract(this._kb);
     if (!difKB.isEmpty()) {
       const oldKB = this._kb;
@@ -196,4 +194,4 @@ class TribleBox {
   }
 }
 
-module.exports = { TribleBox, WSConnector };
+module.exports = { Box, WSConnector };

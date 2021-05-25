@@ -1,4 +1,4 @@
-const { TribleBox, WSConnector } = require("./triblemq.js");
+const { Box, WSConnector } = require("./mq.js");
 const {
   getInvariant,
   globalInvariants,
@@ -6,8 +6,8 @@ const {
   namespace,
   find,
   id,
-  TribleKB,
-} = require("./triblekb.js");
+  KB,
+} = require("./kb.js");
 const { types } = require("./types.js");
 const { MemTribleDB } = require("./memtribledb.js");
 const { S3BlobDB } = require("./s3blobdb.js");
@@ -34,8 +34,8 @@ module.exports = {
   MemBlobDB,
   MemTribleDB,
   S3BlobDB,
-  TribleBox,
-  TribleKB,
+  Box,
+  KB,
   types,
   WSConnector,
   UFOID,

@@ -2,7 +2,6 @@ const { emptyIdPACT, emptyValuePACT } = require("./pact.js");
 const {
   constantConstraint,
   indexConstraint,
-  OrderByMinCost,
   OrderByMinCostAndBlockage,
   resolve,
 } = require("./query.js");
@@ -110,6 +109,7 @@ class Variable {
       if (potentialCycles.has(this)) {
         throw Error("Couldn't group variable, ordering would by cyclic.");
       }
+      //TODO add omit sanity check.
       potentialCycles = new Set(
         this.provider.blockedBy
           .filter(([a, b]) => potentialCycles.has(a))
@@ -132,6 +132,7 @@ class Variable {
 
   omit() {
     this.isOmit = true;
+    this.provider.projected.delete(this.index);
     return this;
   }
 
@@ -158,6 +159,7 @@ class VariableProvider {
     this.namedVariables = new Map();
     this.constantVariables = emptyValuePACT;
     this.blockedBy = [];
+    this.projected = new Set();
   }
 
   namedCache() {
@@ -169,9 +171,11 @@ class VariableProvider {
           if (variable) {
             return variable;
           }
-          variable = new Variable(this, this.nextVariableIndex++, name);
+          variable = new Variable(this, this.nextVariableIndex, name);
           this.namedVariables.set(name, variable);
           this.variables.push(variable);
+          this.projected.add(this.nextVariableIndex);
+          this.nextVariableIndex++;
           return variable;
         },
       }
@@ -179,19 +183,23 @@ class VariableProvider {
   }
 
   unnamed() {
-    const variable = new Variable(this, this.nextVariableIndex++);
+    const variable = new Variable(this, this.nextVariableIndex);
     this.unnamedVariables.push(variable);
     this.variables.push(variable);
+    this.projected.add(this.nextVariableIndex);
+    this.nextVariableIndex++;
     return variable;
   }
 
   constant(c) {
     let variable = this.constantVariables.get(c);
     if (!variable) {
-      variable = new Variable(this, this.nextVariableIndex++);
+      variable = new Variable(this, this.nextVariableIndex);
       variable.constant = c;
       this.constantVariables = this.constantVariables.put(c, variable);
       this.variables.push(variable);
+      this.projected.add(this.nextVariableIndex);
+      this.nextVariableIndex++;
     }
     return variable;
   }
@@ -213,7 +221,7 @@ const lookup = (ns, kb, eId, attributeName) => {
       constantConstraint(1, aId),
       kb.tribledb.constraint(...(isInverse ? [2, 1, 0] : [0, 1, 2])),
     ],
-    new OrderByMinCost(),
+    new OrderByMinCostAndBlockage(new Set([0, 1, 2])),
     new Set([0, 1, 2]),
     [
       new Uint8Array(VALUE_SIZE),
@@ -298,7 +306,7 @@ const entityProxy = function entityProxy(ns, kb, eId) {
             constantConstraint(1, aId),
             kb.tribledb.constraint(...(isInverse ? [2, 1, 0] : [0, 1, 2])),
           ],
-          new OrderByMinCost(),
+          new OrderByMinCostAndBlockage(new Set([0, 1])),
           new Set([0, 1, 2]),
           [
             new Uint8Array(VALUE_SIZE),
@@ -359,7 +367,7 @@ const entityProxy = function entityProxy(ns, kb, eId) {
             indexConstraint(1, ns.forwardAttributeIndex),
             kb.tribledb.constraint(0, 1, 2),
           ],
-          new OrderByMinCost(),
+          new OrderByMinCostAndBlockage(new Set([0, 1])),
           new Set([0, 1, 2]),
           [
             new Uint8Array(VALUE_SIZE),
@@ -379,7 +387,7 @@ const entityProxy = function entityProxy(ns, kb, eId) {
             kb.tribledb.constraint(2, 1, 0),
             indexConstraint(1, ns.inverseAttributeIndex),
           ],
-          new OrderByMinCost(),
+          new OrderByMinCostAndBlockage(new Set([0, 1])),
           new Set([0, 1, 2]),
           [
             new Uint8Array(VALUE_SIZE),
@@ -610,7 +618,7 @@ function* find(ns, cfn, blobdb) {
 
   for (const r of resolve(
     constraints,
-    new OrderByMinCostAndBlockage(vars.blockedBy),
+    new OrderByMinCostAndBlockage(vars.projected, vars.blockedBy),
     new Set(vars.variables.filter((v) => v.ascending).map((v) => v.index)),
     vars.variables.map((_) => new Uint8Array(VALUE_SIZE))
   )) {
@@ -652,7 +660,7 @@ class IDSequence {
   }
 }
 
-class TribleKB {
+class KB {
   constructor(tribledb, blobdb) {
     this.tribledb = tribledb;
     this.blobdb = blobdb;
@@ -663,7 +671,7 @@ class TribleKB {
     if (tribledb === this.tribledb) {
       return this;
     }
-    return new TribleKB(tribledb, this.blobdb);
+    return new KB(tribledb, this.blobdb);
   }
 
   with(ns, efn) {
@@ -702,7 +710,7 @@ class TribleKB {
           indexConstraint(1, uniqueAttributeIndex),
           newTribleDB.constraint(0, 1, 2),
         ],
-        new OrderByMinCostAndBlockage([
+        new OrderByMinCostAndBlockage(new Set([0, 1, 2]), [
           [2, 0],
           [2, 1],
         ]),
@@ -739,7 +747,7 @@ class TribleKB {
           indexConstraint(1, uniqueInverseAttributeIndex),
           newTribleDB.constraint(0, 1, 2),
         ],
-        new OrderByMinCostAndBlockage([
+        new OrderByMinCostAndBlockage(new Set([0, 1, 2]), [
           [0, 1],
           [0, 2],
         ]),
@@ -769,7 +777,7 @@ class TribleKB {
       }
 
       const newBlobDB = this.blobdb.put(blobs);
-      return new TribleKB(newTribleDB, newBlobDB);
+      return new KB(newTribleDB, newBlobDB);
     }
     return this;
   }
@@ -797,7 +805,7 @@ class TribleKB {
   }
 
   empty() {
-    return new TribleKB(this.tribledb.empty(), this.blobdb.empty());
+    return new KB(this.tribledb.empty(), this.blobdb.empty());
   }
 
   isEmpty() {
@@ -823,25 +831,25 @@ class TribleKB {
   union(other) {
     const tribledb = this.tribledb.union(other.tribledb);
     const blobdb = this.blobdb.merge(other.blobdb);
-    return new TribleKB(tribledb, blobdb);
+    return new KB(tribledb, blobdb);
   }
 
   subtract(other) {
     const tribledb = this.tribledb.subtract(other.tribledb);
     const blobdb = this.blobdb.merge(other.blobdb).shrink(tribledb);
-    return new TribleKB(tribledb, blobdb);
+    return new KB(tribledb, blobdb);
   }
 
   difference(other) {
     const tribledb = this.tribledb.difference(other.tribledb);
     const blobdb = this.blobdb.merge(other.blobdb).shrink(tribledb);
-    return new TribleKB(tribledb, blobdb);
+    return new KB(tribledb, blobdb);
   }
 
   intersect(other) {
     const tribledb = this.tribledb.intersect(other.tribledb);
     const blobdb = this.blobdb.merge(other.blobdb).shrink(tribledb);
-    return new TribleKB(tribledb, blobdb);
+    return new KB(tribledb, blobdb);
   }
 }
 
@@ -975,5 +983,5 @@ module.exports = {
   entitiesToTriples,
   find,
   id,
-  TribleKB,
+  KB,
 };
