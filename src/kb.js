@@ -241,13 +241,17 @@ const lookup = (ns, kb, eId, attributeName) => {
         : decoder(v.slice(0), async () => await kb.blobdb.get(v)),
     };
   } else {
-    return {
-      found: true,
-      result: [...res].map(([_e, _a, v]) =>
+    const results = [];
+    for (const [_e, _a, v] of res) {
+      results.push(
         isLink
           ? entityProxy(ns, kb, v)
           : decoder(v.slice(0), async () => await kb.blobdb.get(v))
-      ),
+      );
+    }
+    return {
+      found: true,
+      result: results,
     };
   }
 };
